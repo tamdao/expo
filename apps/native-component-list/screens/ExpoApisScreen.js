@@ -60,6 +60,7 @@ export default class ExpoApisScreen extends React.Component {
       'AuthSession',
       'Branch',
       'Calendars',
+      'Camera',
       'Constants',
       'Contacts',
       'DocumentPicker',

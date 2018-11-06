@@ -15,6 +15,7 @@ import FileSystemScreen from '../screens/FileSystemScreen';
 import FontScreen from '../screens/FontScreen';
 import GifScreen from '../screens/GifScreen';
 import CalendarsScreen from '../screens/CalendarsScreen';
+import CameraScreen from '../screens/Camera/CameraScreen';
 import ConstantsScreen from '../screens/ConstantsScreen';
 import ContactsScreen from '../screens/Contacts/ContactsScreen';
 import ContactDetailScreen from '../screens/Contacts/ContactDetailScreen';
@@ -129,6 +130,7 @@ const ExpoApisStackNavigator = createStackNavigator(
     GoogleLogin: { screen: GoogleLoginScreen },
     Haptic: { screen: HapticScreen },
     Calendars: { screen: CalendarsScreen },
+    Camera: { screen: CameraScreen },
     Constants: { screen: ConstantsScreen },
     Contacts: ContactsScreen,
     ContactDetail: ContactDetailScreen,

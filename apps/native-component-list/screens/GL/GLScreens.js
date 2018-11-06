@@ -391,7 +391,7 @@ void main () {
     }),
   },
 
-  Camera: {
+  GLCamera: {
     screen: GLCameraScreen,
   },
 

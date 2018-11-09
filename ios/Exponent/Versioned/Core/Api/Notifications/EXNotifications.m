@@ -14,6 +14,16 @@
 #import <EXConstantsInterface/EXConstantsInterface.h>
 #import <UserNotifications/UserNotifications.h>
 
+typedef enum EXTimePeriod {
+  EXUnknownTimePeriod,
+  EXYearTimePeriod,
+  EXMonthTimePeriod,
+  EXWeekTimePeriod,
+  EXDayTimePeriod,
+  EXHourTimePeriod,
+  EXMinuteTimePeriod
+} EXTimePeriod;
+
 @interface EXNotifications ()
 
 // unversioned EXRemoteNotificationManager instance
@@ -80,8 +90,8 @@ RCT_EXPORT_METHOD(presentLocalNotification:(NSDictionary *)payload
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(__unused RCTPromiseRejectBlock)reject)
 {
-  UNMutableNotificationContent* content = [self _localNotificationFromPayload:payload];
-  UNNotificationRequest* request = [UNNotificationRequest requestWithIdentifier:content.userInfo[@"id"] content:content trigger:nil];
+  UNMutableNotificationContent *content = [self _localNotificationFromPayload:payload];
+  UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:content.userInfo[@"id"] content:content trigger:nil];
 
   [[EXUserNotificationCenter sharedInstance] addNotificationRequest:request withCompletionHandler:^(NSError * _Nullable error) {
     if (error != nil) {
@@ -92,10 +102,11 @@ RCT_EXPORT_METHOD(presentLocalNotification:(NSDictionary *)payload
   }];
 }
 
-RCT_EXPORT_METHOD(createCategory: (NSString *)categoryId
-                  actions: (NSArray *)actions
-                  resolver:(RCTPromiseResolveBlock)resolve
-                  rejecter:(__unused RCTPromiseRejectBlock)reject)
+RCT_REMAP_METHOD(createCategoryAsync,
+                 createCategoryWithCategoryId:(NSString *)categoryId
+                 actions:(NSArray *)actions
+                 resolver:(RCTPromiseResolveBlock)resolve
+                 rejecter:(__unused RCTPromiseRejectBlock)reject)
 {
   categoryId = [self getScopedIdIfDetached:categoryId];
 
@@ -110,11 +121,14 @@ RCT_EXPORT_METHOD(createCategory: (NSString *)categoryId
     [actionsArray addObject:[categoryAction getUNNotificationAction]];
   }
   
-  UNNotificationCategory * newCategory = [UNNotificationCategory categoryWithIdentifier:categoryId actions:actionsArray intentIdentifiers:@[] options:UNNotificationCategoryOptionNone];
+  UNNotificationCategory *newCategory = [UNNotificationCategory categoryWithIdentifier:categoryId
+                                                                                actions:actionsArray
+                                                                      intentIdentifiers:@[]
+                                                                                options:UNNotificationCategoryOptionNone];
   
-  [[EXUserNotificationCenter sharedInstance] getNotificationCategoriesWithCompletionHandler:^(NSSet * categories) {
-    NSMutableSet * newCategories = [categories mutableCopy];
-    for(UNNotificationCategory *category in newCategories) {
+  [[EXUserNotificationCenter sharedInstance] getNotificationCategoriesWithCompletionHandler:^(NSSet<UNNotificationCategory *> *categories) {
+    NSMutableSet<UNNotificationCategory *> *newCategories = [categories mutableCopy];
+    for (UNNotificationCategory *category in newCategories) {
       if ([category.identifier isEqualToString:categoryId]) {
         [newCategories removeObject:category];
         break;
@@ -129,49 +143,16 @@ RCT_EXPORT_METHOD(createCategory: (NSString *)categoryId
 RCT_EXPORT_METHOD(scheduleLocalNotification:(NSDictionary *)payload
                   withOptions:(NSDictionary *)options
                   resolver:(RCTPromiseResolveBlock)resolve
-                  rejecter:(__unused RCTPromiseRejectBlock)reject)
+                  rejecter:(RCTPromiseRejectBlock)reject)
 {
-  bool repeats = NO;
-  if (options[@"repeats"]) {
-    repeats = [options[@"repeats"] boolValue];
-  }
-  UNMutableNotificationContent* content = [self _localNotificationFromPayload:payload];
-
-  NSDateComponents * date = [self getDateFromOptions:options];
-  UNCalendarNotificationTrigger* trigger = [UNCalendarNotificationTrigger triggerWithDateMatchingComponents:date repeats:repeats];
-  UNNotificationRequest* request = [UNNotificationRequest requestWithIdentifier:content.userInfo[@"id"]
+  UNCalendarNotificationTrigger *notificationTrigger = [self notificationTriggerFor:options[@"time"] repeatingEvery:options[@"repeat"]];
+  UNMutableNotificationContent *content = [self _localNotificationFromPayload:payload];
+  UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:[self getScopedIdIfDetached:content.userInfo[@"id"]]
                                                                         content:content
-                                                                        trigger:trigger];
+                                                                        trigger:notificationTrigger];
   [[EXUserNotificationCenter sharedInstance] addNotificationRequest:request withCompletionHandler:^(NSError * _Nullable error) {
-    if (error != nil) {
-      NSLog(@"%@", error.localizedDescription);
-      reject(@"Could not make notification request", error.localizedDescription, error);
-    } else {
-      resolve(content.userInfo[@"id"]);
-    }
-  }];
-}
-
-RCT_EXPORT_METHOD(scheduleLocalNotificationWithTimeInterval:(NSDictionary *)payload
-                  withOptions:(NSDictionary *)options
-                  resolver:(RCTPromiseResolveBlock)resolve
-                  rejecter:(__unused RCTPromiseRejectBlock)reject)
-{
-  bool repeats = NO;
-  if (options[@"repeats"]) {
-    repeats = [options[@"repeats"] boolValue];
-  }
-  UNMutableNotificationContent* content = [self _localNotificationFromPayload:payload];
-
-  double timeInterval = [((NSNumber *)options[@"intervalMs"]) doubleValue]/1000.0;
-  UNTimeIntervalNotificationTrigger* trigger = [UNTimeIntervalNotificationTrigger triggerWithTimeInterval:timeInterval
-                                                                                                  repeats:repeats];
-  UNNotificationRequest* request = [UNNotificationRequest
-                                    requestWithIdentifier:content.userInfo[@"id"] content:content trigger:trigger];
-  [[EXUserNotificationCenter sharedInstance] addNotificationRequest:request withCompletionHandler:^(NSError * _Nullable error) {
-    if (error != nil) {
-      NSLog(@"%@", error.localizedDescription);
-      reject(@"Could not make notification request", error.localizedDescription, error);
+    if (error) {
+      reject(@"E_NOTIF_REQ", error.localizedDescription, error);
     } else {
       resolve(content.userInfo[@"id"]);
     }
@@ -189,15 +170,17 @@ RCT_REMAP_METHOD(cancelAllScheduledNotifications,
                  cancelAllScheduledNotificationsWithResolver:(RCTPromiseResolveBlock)resolve
                  rejecter:(__unused RCTPromiseRejectBlock)reject)
 {
-  [[EXUserNotificationCenter sharedInstance] getPendingNotificationRequestsWithCompletionHandler:
-    ^(NSArray<UNNotificationRequest *> * _Nonnull requests){
-      for (UNNotificationRequest * request in requests) {
-        if ([request.content.userInfo[@"experienceId"] isEqualToString:self.experienceId]) {
-          [[EXUserNotificationCenter sharedInstance] removePendingNotificationRequestsWithIdentifiers:@[request.content.userInfo[@"id"]]];
-        }
+  [[EXUserNotificationCenter sharedInstance] getPendingNotificationRequestsWithCompletionHandler:^(NSArray<UNNotificationRequest *> * _Nonnull requests) {
+    NSMutableArray<NSString *> *requestsToCancelIdentifiers = [NSMutableArray new];
+    for (UNNotificationRequest *request in requests) {
+      if ([request.content.userInfo[@"experienceId"] isEqualToString:self.experienceId]) {
+        NSString *scopedId = [self getScopedIdIfDetached:request.content.userInfo[@"id"]];
+        [requestsToCancelIdentifiers addObject:scopedId];
       }
-    }];
-  resolve(nil);
+    }
+    [[EXUserNotificationCenter sharedInstance] removePendingNotificationRequestsWithIdentifiers:requestsToCancelIdentifiers];
+    resolve(nil);
+  }];
 }
 
 #pragma mark - Badges
@@ -205,8 +188,8 @@ RCT_REMAP_METHOD(cancelAllScheduledNotifications,
 // TODO: Make this read from the kernel instead of UIApplication for the main Exponent app
 
 RCT_REMAP_METHOD(getBadgeNumberAsync,
-                 getBadgeNumberAsyncWithResolver:(__strong RCTPromiseResolveBlock)resolve
-                 rejecter:(__unused RCTPromiseRejectBlock)reject)
+                 getBadgeNumberAsyncWithResolver:(RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject)
 {
   __block NSInteger badgeNumber;
   dispatch_async(dispatch_get_main_queue(), ^{
@@ -216,7 +199,7 @@ RCT_REMAP_METHOD(getBadgeNumberAsync,
 }
 
 RCT_EXPORT_METHOD(setBadgeNumberAsync:(nonnull NSNumber *)number
-                  resolver:(__strong RCTPromiseResolveBlock)resolve
+                  resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(__unused RCTPromiseRejectBlock)reject)
 {
   dispatch_async(dispatch_get_main_queue(), ^{
@@ -248,9 +231,9 @@ RCT_EXPORT_METHOD(setBadgeNumberAsync:(nonnull NSNumber *)number
   }
  
   content.userInfo = @{
-                       @"body":payload[@"data"],
-                       @"experienceId":self.experienceId,
-                       @"id":uniqueId
+                       @"body": payload[@"data"],
+                       @"experienceId": self.experienceId,
+                       @"id": uniqueId
                        };
   
   return content;
@@ -263,17 +246,64 @@ RCT_EXPORT_METHOD(setBadgeNumberAsync:(nonnull NSNumber *)number
   return [EXNotificationScoper scope:identifier withExperienceId:self.experienceId];
 }
 
-- (NSDateComponents *)getDateFromOptions:(NSDictionary *) options {
-  NSDateComponents * res = [[NSDateComponents alloc] init];
-  NSArray * units = @[@"day", @"month", @"year", @"weekday", @"quarter", @"leapMonth",
-                      @"nanosecond", @"era", @"weekdayOrdinal", @"weekOfMonth", @"weekOfYear",
-                      @"hour", @"second", @"minute", @"yearForWeekOfYear"];
-  for( NSString * unit in units) {
-    if (options[unit]) {
-      [res setValue:(NSNumber *)options[unit] forKey:unit];
-    }
+- (UNCalendarNotificationTrigger *)notificationTriggerFor:(NSNumber * _Nullable)unixTime repeatingEvery:(NSString * _Nullable)timePeriod
+{
+  NSDateComponents *dateComponents = [self dateComponentsFrom:unixTime];
+  if (timePeriod) {
+    EXTimePeriod timePeriodToRepeat = [self convertStringPeriodToEnum:timePeriod];
+    [self mutateDateComponents:dateComponents toRepeatEvery:timePeriodToRepeat];
+    return [UNCalendarNotificationTrigger triggerWithDateMatchingComponents:dateComponents repeats:YES];
   }
-  return res;
+
+  return [UNCalendarNotificationTrigger triggerWithDateMatchingComponents:dateComponents repeats:NO];
+}
+
+- (NSDateComponents *)dateComponentsFrom:(NSNumber * _Nullable)unixTime {
+  static unsigned unitFlags = NSCalendarUnitSecond | NSCalendarUnitMinute | NSCalendarUnitHour | NSCalendarUnitDay | NSCalendarUnitMonth |  NSCalendarUnitYear;
+  NSDate *triggerDate = [RCTConvert NSDate:unixTime] ?: [NSDate new];
+  NSCalendar *calendar = [[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+  return [calendar components:unitFlags fromDate:triggerDate];
+}
+
+- (void)mutateDateComponents:(NSDateComponents *)dateComponents toRepeatEvery:(EXTimePeriod)timePeriod
+{
+  switch (timePeriod) {
+    case EXUnknownTimePeriod:
+      return;
+    case EXMinuteTimePeriod:
+      dateComponents.minute = NSDateComponentUndefined;
+    case EXHourTimePeriod:
+      dateComponents.hour = NSDateComponentUndefined;
+    case EXDayTimePeriod:
+      dateComponents.day = NSDateComponentUndefined;
+    case EXWeekTimePeriod:
+      dateComponents.weekOfYear = NSDateComponentUndefined;
+    case EXMonthTimePeriod:
+      dateComponents.month = NSDateComponentUndefined;
+    case EXYearTimePeriod:
+      dateComponents.year = NSDateComponentUndefined;
+  }
+
+  return [self mutateDateComponents:dateComponents toRepeatEvery:timePeriod - 1];
+}
+
+- (EXTimePeriod)convertStringPeriodToEnum:(NSString *)timePeriod
+{
+  if ([timePeriod isEqualToString:@"year"]) {
+    return EXYearTimePeriod;
+  } else if ([timePeriod isEqualToString:@"month"]) {
+    return EXMonthTimePeriod;
+  } else if ([timePeriod isEqualToString:@"week"]) {
+    return EXWeekTimePeriod;
+  } else if ([timePeriod isEqualToString:@"day"]) {
+    return EXDayTimePeriod;
+  } else if ([timePeriod isEqualToString:@"hour"]) {
+    return EXHourTimePeriod;
+  } else if ([timePeriod isEqualToString:@"minute"]) {
+    return EXMinuteTimePeriod;
+  }
+
+  return EXUnknownTimePeriod;
 }
 
 @end

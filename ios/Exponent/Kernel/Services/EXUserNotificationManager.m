@@ -6,9 +6,6 @@
 #import "EXEnvironment.h"
 #import "EXNotificationScoper.h"
 
-@interface EXUserNotificationManager()
-@end
-
 @implementation EXUserNotificationManager
 
 + (instancetype)sharedInstance
@@ -23,9 +20,7 @@
   return theManager;
 }
 
-- (void)userNotificationCenter:(UNUserNotificationCenter *)center
-didReceiveNotificationResponse:(UNNotificationResponse *)response
-         withCompletionHandler:(void (^)(void))completionHandler
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void (^)(void))completionHandler
 {
   BOOL isFromBackground = [UIApplication sharedApplication].applicationState != UIApplicationStateActive;
   NSDictionary *payload = response.notification.request.content.userInfo;
@@ -43,13 +38,13 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
         actionId = [EXNotificationScoper split:actionId][1];
       }
     }
-    
+
     if ([response isKindOfClass:[UNTextInputNotificationResponse class]]) {
       userText = ((UNTextInputNotificationResponse *) response).userText;
     }
-    
+
     BOOL isRemote = [response.notification.request.trigger isKindOfClass:[UNPushNotificationTrigger class]];
-    if (body && experienceId) {
+    if (experienceId) {
       [[EXKernel sharedInstance] sendNotification:body
                                toExperienceWithId:experienceId
                                    fromBackground:isFromBackground
@@ -61,18 +56,16 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
   completionHandler();
 }
 
-- (void)userNotificationCenter:(UNUserNotificationCenter *)center
-       willPresentNotification:(UNNotification *)notification
-         withCompletionHandler:(void (^)(UNNotificationPresentationOptions options))completionHandler
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)notification withCompletionHandler:(void (^)(UNNotificationPresentationOptions options))completionHandler
 {
   NSDictionary *payload = notification.request.content.userInfo;
   if (payload) {
     NSDictionary *body = payload[@"body"];
     NSString *experienceId = payload[@"experienceId"];
     NSString *userText = nil;
-    
+
     BOOL isRemote = [notification.request.trigger isKindOfClass:[UNPushNotificationTrigger class]];
-    if (body && experienceId) {
+    if (experienceId) {
       [[EXKernel sharedInstance] sendNotification:body
                                toExperienceWithId:experienceId
                                    fromBackground:NO

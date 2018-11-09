@@ -151,7 +151,9 @@ NSString * const EXAppDidRegisterUserNotificationSettingsNotification = @"kEXApp
 
 - (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo
 fetchCompletionHandler:(void (^)(UIBackgroundFetchResult result))completionHandler {
-  // ToDo add here background task execution
+
+  // Here background task execution should go.
+
   completionHandler(UIBackgroundFetchResultNoData);
 }
 
